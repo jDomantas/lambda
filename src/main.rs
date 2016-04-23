@@ -9,18 +9,18 @@ pub enum AstNode {
 	Function(u32, Box<AstNode>),
 }
 
-fn print_node(node: AstNode) {
+fn print_node(node: &AstNode) {
 	match node {
-		AstNode::Variable(v) => print!("({})", v),
-		AstNode::Function(p, body) => {
+		&AstNode::Variable(v) => print!("({})", v),
+		&AstNode::Function(p, ref body) => {
 			print!("(\\{}.", p);
-			print_node(*body);
+			print_node(&**body);
 			print!(")");
 		},
-		AstNode::Application(a, b) => {
+		&AstNode::Application(ref a, ref b) => {
 			print!("(");
-			print_node(*a);
-			print_node(*b);
+			print_node(&**a);
+			print_node(&**b);
 			print!(")");
 		}
 	}
@@ -43,7 +43,7 @@ fn main() {
 	match parser::parse_object(&input) {
 		Ok(node) => {
 			println!("Success!");
-			print_node(node);
+			print_node(&node);
 			println!("");
 		}
 		Err(e) => report_error(&input, e),
