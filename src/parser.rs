@@ -1,4 +1,5 @@
 use std;
+use std::collections::HashMap;
 use AstNode;
 
 pub struct ParseError {
@@ -9,13 +10,25 @@ pub struct ParseError {
 struct Parser<'a> {
 	data: std::iter::Peekable<std::str::Chars<'a>>,
 	position: usize,
+	replacements: HashMap<char, u32>,
+	next_value: u32,
 }
 
 impl<'a> Parser<'a> {
 	fn new(source: &str) -> Parser {
+		let mut map = HashMap::new();
+		// can't find a way to iterate over characters
+		// so iterate over char codes and convert back
+		for i in ('a' as u32)..('z' as u32 + 1) {
+			let ch = std::char::from_u32(i).unwrap();
+			map.insert(ch, i - ('a' as u32));
+		}
+		
 		Parser {
 			data: source.chars().peekable(),
 			position: 0,
+			replacements: map,
+			next_value: ('z' as u32) - ('a' as u32) + 1,
 		}
 	} 
 	
@@ -84,7 +97,10 @@ fn parse_unit(parser: &mut Parser) -> Result<AstNode, ParseError> {
 		}
 	} else {
 		match parser.consume_letter() {
-			Ok(ch) => Ok(AstNode::Variable(ch)),
+			Ok(ch) => Ok(AstNode::Variable(
+				// we are always keeping keys 'a' - 'z' in the map
+				// so unwrapping must always be safe
+				*parser.replacements.get(&ch).unwrap())),
 			Err(e) => Err(e),
 		}
 	}
@@ -97,14 +113,26 @@ fn parse_function(parser: &mut Parser) -> Result<AstNode, ParseError> {
 				return Err(e);
 			}
 			
+			// just like in parse_unit, unwrapping must be safe
+			let old_value = *parser.replacements.get(&ch).unwrap();
+			let replace_with = parser.next_value;
+			parser.next_value += 1;
+			parser.replacements.insert(ch, replace_with);
+			
 			if parser.check('\\') {
 				match parse_function(parser) {
-					Ok(node) => Ok(AstNode::Function(ch, Box::new(node))),
+					Ok(node) => {
+						parser.replacements.insert(ch, old_value);
+						Ok(AstNode::Function(replace_with, Box::new(node)))
+					},
 					Err(e) => Err(e), 
 				}
 			} else {
 				match parse_node(parser) {
-					Ok(node) => Ok(AstNode::Function(ch, Box::new(node))),
+					Ok(node) => {
+						parser.replacements.insert(ch, old_value);
+						Ok(AstNode::Function(replace_with, Box::new(node)))
+					},
 					Err(e) => Err(e), 
 				}
 			}

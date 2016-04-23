@@ -4,14 +4,14 @@ use std::io;
 use parser::ParseError;
 
 pub enum AstNode {
-	Variable(char),
+	Variable(u32),
 	Application(Box<AstNode>, Box<AstNode>),
-	Function(char, Box<AstNode>),
+	Function(u32, Box<AstNode>),
 }
 
 fn print_node(node: AstNode) {
 	match node {
-		AstNode::Variable(v) => print!("{}", v),
+		AstNode::Variable(v) => print!("({})", v),
 		AstNode::Function(p, body) => {
 			print!("(\\{}.", p);
 			print_node(*body);
