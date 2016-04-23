@@ -34,7 +34,6 @@ impl<'a> Parser<'a> {
 	
 	fn advance(&mut self) {
 		self.position += 1;
-		println!("advanced, now at {}", self.position);
 		self.data.next();
 		// skip whitespace
 		loop {
