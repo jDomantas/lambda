@@ -157,5 +157,14 @@ pub fn parse_object(source: &str) -> Result<AstNode, ParseError> {
 		_ => { },
 	}
 	
-	parse_node(&mut parser)
+	match parse_node(&mut parser) {
+		Ok(node) => match parser.peek() {
+			None => Ok(node),
+			Some(_) => Err(ParseError {
+				position: parser.position,
+				message: "expected end of input".to_string(),
+			}),
+		},
+		Err(e) => Err(e),
+	}
 }
