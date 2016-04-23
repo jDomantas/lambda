@@ -1,8 +1,13 @@
 mod parser;
 
 use std::io;
-use parser::AstNode;
 use parser::ParseError;
+
+pub enum AstNode {
+	Variable(char),
+	Application(Box<AstNode>, Box<AstNode>),
+	Function(char, Box<AstNode>),
+}
 
 fn print_node(node: AstNode) {
 	match node {

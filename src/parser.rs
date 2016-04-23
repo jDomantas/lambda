@@ -1,10 +1,5 @@
 use std;
-
-pub enum AstNode {
-	Variable(char),
-	Application(Box<AstNode>, Box<AstNode>),
-	Function(char, Box<AstNode>),
-}
+use AstNode;
 
 pub struct ParseError {
 	pub position: usize,
