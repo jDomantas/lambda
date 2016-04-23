@@ -1,4 +1,5 @@
 mod parser;
+mod reduce;
 
 use std::io;
 use parser::ParseError;
@@ -44,6 +45,9 @@ fn main() {
 		Ok(node) => {
 			println!("Success!");
 			print_node(&node);
+			println!("");
+			let reduced = reduce::beta_reduce(&node);
+			print_node(&reduced);
 			println!("");
 		}
 		Err(e) => report_error(&input, e),
