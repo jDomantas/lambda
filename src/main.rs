@@ -2,6 +2,7 @@ mod parser;
 
 use std::io;
 use parser::AstNode;
+use parser::ParseError;
 
 fn print_node(node: AstNode) {
 	match node {
@@ -20,13 +21,13 @@ fn print_node(node: AstNode) {
 	}
 }
 
-fn report_error(input: &str, position: usize, msg: String) {
+fn report_error(input: &str, err: ParseError) {
 	print!("{}", input);
-	for _ in 0..position {
+	for _ in 0..err.position {
 		print!(" ");
 	}
 	println!("^");
-	println!("Error (column {}): {}", position, msg);
+	println!("Error (column {}): {}", err.position, err.message);
 }
 
 fn main() {
@@ -40,6 +41,6 @@ fn main() {
 			print_node(node);
 			println!("");
 		}
-		Err((pos, e)) => report_error(&input, pos, e),
+		Err(e) => report_error(&input, e),
 	}
 }

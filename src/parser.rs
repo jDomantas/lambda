@@ -6,10 +6,14 @@ pub enum AstNode {
 	Function(char, Box<AstNode>),
 }
 
+pub struct ParseError {
+	pub position: usize,
+	pub message: String,
+}
+
 struct Parser<'a> {
 	data: std::iter::Peekable<std::str::Chars<'a>>,
 	position: usize,
-	error: Option<(usize, String)>,
 }
 
 impl<'a> Parser<'a> {
@@ -17,7 +21,6 @@ impl<'a> Parser<'a> {
 		Parser {
 			data: source.chars().peekable(),
 			position: 0,
-			error: None,
 		}
 	} 
 	
@@ -52,97 +55,99 @@ impl<'a> Parser<'a> {
 		}
 	}
 	
-	fn consume(&mut self, expected: char) -> bool {
+	fn consume(&mut self, expected: char) -> Option<ParseError> {
 		match self.check(expected) {
-			true => true,
-			false => {
-				self.error = Some((self.position, format!("expected '{}'", expected)));
-				false
-			},
+			true => None,
+			false => Some(ParseError { 
+				position: self.position, 
+				message: format!("expected '{}'", expected) 
+			}),
 		}
 	}
 	
-	fn consume_letter(&mut self) -> Option<char> {
+	fn consume_letter(&mut self) -> Result<char, ParseError> {
 		match self.peek() {
 			Some(c) if c >= 'a' && c <= 'z' => {
 				self.advance();
-				Some(c)
+				Ok(c)
 			},
-			_ => {
-				self.error = Some((self.position, "expected letter".to_string()));
-				None
-			},
+			_ => Err(ParseError { 
+				position: self.position, 
+				message: "expected letter".to_string(), 
+			}),
 		}
 	}
 }
 
-fn parse_unit(parser: &mut Parser) -> Option<AstNode> {
+fn parse_unit(parser: &mut Parser) -> Result<AstNode, ParseError> {
 	if parser.check('(') {
-		if let Some(node) = parse_node(parser) {
-			if parser.consume(')') {
-				Some(node)
+		match parse_node(parser) {
+			Ok(node) => match parser.consume(')') {
+				None => Ok(node),
+				Some(e) => Err(e),
+			},
+			Err(e) => Err(e),
+		}
+	} else {
+		match parser.consume_letter() {
+			Ok(ch) => Ok(AstNode::Variable(ch)),
+			Err(e) => Err(e),
+		}
+	}
+}
+
+fn parse_function(parser: &mut Parser) -> Result<AstNode, ParseError> {
+	match parser.consume_letter() {
+		Ok(ch) => {
+			if let Some(e) = parser.consume('.') {
+				return Err(e);
+			}
+			
+			if parser.check('\\') {
+				match parse_function(parser) {
+					Ok(node) => Ok(AstNode::Function(ch, Box::new(node))),
+					Err(e) => Err(e), 
+				}
 			} else {
-				None
+				match parse_node(parser) {
+					Ok(node) => Ok(AstNode::Function(ch, Box::new(node))),
+					Err(e) => Err(e), 
+				}
 			}
-		} else {
-			None
-		}
-	} else if let Some(var) = parser.consume_letter() {
-		Some(AstNode::Variable(var))
-	} else {
-		None
+		},
+		Err(e) => Err(e),
 	}
 }
 
-fn parse_function(parser: &mut Parser) -> Option<AstNode> {
-	if let Some(parameter) = parser.consume_letter() {
-		if !parser.consume('.') {
-			return None;
-		}
-		
-		if parser.check('\\') {
-			match parse_function(parser) {
-				Some(node) => Some(AstNode::Function(parameter, Box::new(node))),
-				None => None, 
-			}
-		} else {
-			match parse_node(parser) {
-				Some(node) => Some(AstNode::Function(parameter, Box::new(node))),
-				None => None,
-			}
-		}
-	} else {
-		None
-	}
-}
-
-fn parse_node(parser: &mut Parser) -> Option<AstNode> {
+fn parse_node(parser: &mut Parser) -> Result<AstNode, ParseError> {
 	if parser.check('\\') {
 		return parse_function(parser);
 	}
 	
-	if let Some(unit) = parse_unit(parser) {
-		let mut result = unit;
-		loop {
-			match parser.peek() {
-				Some(c) if c == '(' || (c >= 'a' && c <= 'z') => {
-					if let Some(unit) = parse_unit(parser) {
-						result = AstNode::Application(Box::new(result), Box::new(unit));
-					} else {
-						return None;
-					}
-				},
-				_ => break, 
+	match parse_unit(parser) {
+		Ok(unit) => {
+			let mut result = unit;
+			loop {
+				match parser.peek() {
+					Some(c) if c == '(' || (c >= 'a' && c <= 'z') => {
+						match parse_unit(parser) {
+							Ok(unit) => result = AstNode::Application(
+								Box::new(result), 
+								Box::new(unit)),
+							Err(e) => return Err(e),
+						}
+					},
+					_ => break, 
+				}
 			}
-		}
-		
-		Some(result)
-	} else {
-		None
+			
+			Ok(result)
+		},
+		Err(e) => Err(e),
 	}
 }
 
-pub fn parse_object<'a>(source: &'a str) -> Result<AstNode, (usize, String)> {
+pub fn parse_object(source: &str) -> Result<AstNode, ParseError> {
 	let mut parser = Parser::new(source);
 	
 	// skip initial whitespace
@@ -153,13 +158,5 @@ pub fn parse_object<'a>(source: &'a str) -> Result<AstNode, (usize, String)> {
 		_ => { },
 	}
 	
-	match parse_node(&mut parser) {
-		Some(node) => {
-			match parser.peek() {
-				None => Ok(node),
-				_ => Err((parser.position, "expected end of input".to_string())),
-			}
-		},
-		None => Err(parser.error.unwrap()),
-	}
+	parse_node(&mut parser)
 }
