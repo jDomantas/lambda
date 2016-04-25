@@ -35,6 +35,26 @@ fn increment_free(node: &AstNode, by: u32, free_threshold: u32) -> AstNode {
 	}
 }
 
+fn decrement_free(node: &AstNode, free_threshold: u32) -> AstNode {
+	match node {
+		&AstNode::Application(ref a, ref b) =>
+			AstNode::Application(
+				Box::new(decrement_free(&**a, free_threshold)),
+				Box::new(decrement_free(&**b, free_threshold))),
+		&AstNode::BoundVariable(num) if num >= free_threshold =>
+			// free variable
+			AstNode::BoundVariable(num - 1),
+		&AstNode::BoundVariable(num) =>
+			// bound variable, don't change
+			AstNode::BoundVariable(num),
+		&AstNode::FreeVariable(ch) =>
+			AstNode::FreeVariable(ch),
+		&AstNode::Function(ref body) =>
+			AstNode::Function(
+				Box::new(decrement_free(&**body, free_threshold + 1))),
+	}
+}
+
 fn substitute_walk(node: &AstNode, depth: u32, arg: &AstNode) -> AstNode {
 	match node {
 		&AstNode::FreeVariable(ch) => 
@@ -64,10 +84,12 @@ fn substitute(node: &AstNode, arg: &AstNode) -> AstNode {
 fn reduce_application(left: &AstNode, right: &AstNode, to_fn: bool) -> AstNode {
 	let left_fn = reduce_node(left, true);
 	match left_fn {
-		AstNode::Function(body) =>
+		AstNode::Function(body) => {
 			// replace variables that have index of 0
 			// (they are bound by this function)
-			reduce_node(&substitute(&body, right), to_fn),
+			let res = substitute(&decrement_free(&body, 1), right);
+			reduce_node(&res, to_fn)
+		},
 		_ => 
 			AstNode::Application(
 				Box::new(reduce_node(&left_fn, false)),
