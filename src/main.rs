@@ -11,6 +11,40 @@ pub enum AstNode {
 	Function(Box<AstNode>),
 }
 
+fn pretty_print_walk(node: &AstNode, current_depth: u32, in_application: bool) {
+	match node {
+		&AstNode::Application(ref a, ref b) => {
+			pretty_print_walk(&**a, current_depth, true);
+			pretty_print_walk(&**b, current_depth, true);
+		},
+		&AstNode::BoundVariable(num) => {
+			let ch = std::char::from_u32(
+				current_depth - num - 1 + ('a' as u32));
+			print!("{}", ch.unwrap_or('?'));
+		},
+		&AstNode::FreeVariable(ch) => {
+			print!("{}", ch);
+		},
+		&AstNode::Function(ref body) => {
+			let param = std::char::from_u32(current_depth + ('a' as u32))
+				.unwrap_or('?');
+			if in_application {
+				print!("(\\{}.", param);
+			} else {
+				print!("\\{}.", param);
+			}
+			pretty_print_walk(&**body, current_depth + 1, false);
+			if in_application {
+				print!(")");
+			}
+		},
+	}
+}
+
+fn pretty_print(node: &AstNode) {
+	pretty_print_walk(node, 0, false);
+}
+
 fn print_node(node: &AstNode) {
 	match node {
 		&AstNode::FreeVariable(ch) => print!("({})", ch),
@@ -50,10 +84,10 @@ fn main() {
 	match parser::parse_object(&input) {
 		Ok(node) => {
 			println!("Success!");
-			print_node(&node);
+			pretty_print(&node);
 			println!("");
 			let reduced = reduction::beta_reduce(&node);
-			print_node(&reduced);
+			pretty_print(&reduced);
 			println!("");
 		}
 		Err(e) => report_error(&input, e),
