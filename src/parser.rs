@@ -14,6 +14,11 @@ struct Parser<'a> {
 	current_depth: u32,
 }
 
+enum Alphanumeric {
+	Letter(char),
+	Number(u32),
+}
+
 impl<'a> Parser<'a> {
 	fn new(source: &str) -> Parser {
 		Parser {
@@ -32,17 +37,19 @@ impl<'a> Parser<'a> {
 		}
 	}
 	
-	fn advance(&mut self) {
+	fn advance(&mut self) -> bool {
 		self.position += 1;
 		self.data.next();
+		let mut skipped_whitespace = false;
 		// skip whitespace
 		loop {
 			match self.peek() {
 				Some(' ') | Some('\t') | Some('\n') | Some('\r') => { 
 					self.position += 1; 
 					self.data.next();
+					skipped_whitespace = true;
 				},
-				_ => break,
+				_ => return skipped_whitespace,
 			}
 		}
 	}
@@ -64,18 +71,47 @@ impl<'a> Parser<'a> {
 		}
 	}
 	
-	fn consume_letter(&mut self) -> Result<char, ParseError> {
+	fn consume_alphanumeric(&mut self) -> Result<Alphanumeric, ParseError> {
 		match self.peek() {
 			Some(c) if c >= 'a' && c <= 'z' => {
 				self.advance();
-				Ok(c)
+				Ok(Alphanumeric::Letter(c))
+			},
+			Some(n) if n >= '0' && n <= '9' => {
+				let mut current: u32 = (n as u32) - ('0' as u32);
+				while !self.advance() {
+					match self.peek() {
+						Some(n) if n >= '0' && n <= '9' => {
+							let digit: u32 = (n as u32) - ('0' as u32);
+							current = current * 10 + digit;
+						},
+						Some(c) if c >= 'a' && c <= 'z' => 
+							return Err(ParseError { 
+								position: self.position, 
+								message: "invalid number".to_string(), 
+							}),
+						_ => break,
+					}
+				}
+				Ok(Alphanumeric::Number(current))
 			},
 			_ => Err(ParseError { 
 				position: self.position, 
-				message: "expected letter".to_string(), 
+				message: "expected letter or number".to_string(), 
 			}),
 		}
 	}
+}
+
+fn create_church_numeral(num: u32) -> AstNode {
+	let mut node = AstNode::BoundVariable(0);
+	for _ in 0..num {
+		node = AstNode::Application(
+			Box::new(AstNode::BoundVariable(1)),
+			Box::new(node));
+	}
+	
+	return AstNode::Function(Box::new(AstNode::Function(Box::new(node))));
 }
 
 fn map_optional_insert(map: &mut HashMap<char, u32>, key: char, value: Option<u32>) {
@@ -95,22 +131,24 @@ fn parse_unit(parser: &mut Parser) -> Result<AstNode, ParseError> {
 			Err(e) => Err(e),
 		}
 	} else {
-		match parser.consume_letter() {
-			Ok(ch) => {
+		match parser.consume_alphanumeric() {
+			Ok(Alphanumeric::Letter(ch)) => {
 				match parser.bind_depths.get(&ch) {
 					Some(depth) => Ok(AstNode::BoundVariable(
 						parser.current_depth - depth)),
 					None => Ok(AstNode::FreeVariable(ch)),
 				}
 			},
+			Ok(Alphanumeric::Number(num)) => 
+				Ok(create_church_numeral(num)),
 			Err(e) => Err(e),
 		}
 	}
 }
 
 fn parse_function(parser: &mut Parser) -> Result<AstNode, ParseError> {
-	match parser.consume_letter() {
-		Ok(ch) => {
+	match parser.consume_alphanumeric() {
+		Ok(Alphanumeric::Letter(ch)) => {
 			if let Some(e) = parser.consume('.') {
 				return Err(e);
 			}
@@ -138,6 +176,10 @@ fn parse_function(parser: &mut Parser) -> Result<AstNode, ParseError> {
 				}
 			}
 		},
+		Ok(Alphanumeric::Number(_)) => Err(ParseError {
+			position: parser.position,
+			message: "expected letter".to_string(),	
+		}),
 		Err(e) => Err(e),
 	}
 }
@@ -152,7 +194,10 @@ fn parse_node(parser: &mut Parser) -> Result<AstNode, ParseError> {
 			let mut result = unit;
 			loop {
 				match parser.peek() {
-					Some(c) if c == '(' || (c >= 'a' && c <= 'z') => {
+					Some(c) if 
+						c == '(' || 
+						(c >= 'a' && c <= 'z') || 
+						(c >= '0' && c <= '9') => {
 						match parse_unit(parser) {
 							Ok(unit) => result = AstNode::Application(
 								Box::new(result), 
