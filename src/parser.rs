@@ -7,29 +7,55 @@ pub struct ParseError {
 	pub message: String,
 }
 
-struct Parser<'a> {
-	data: std::iter::Peekable<std::str::Chars<'a>>,
-	position: usize,
-	bind_depths: HashMap<char, u32>,
-	current_depth: u32,
-}
-
-enum Alphanumeric {
+enum TokenContents {
 	Letter(char),
 	Number(u32),
+	Name(String),
+	Dot,
+	Lambda,
+	OpenParenth,
+	CloseParenth,
+	End,
 }
 
-impl<'a> Parser<'a> {
-	fn new(source: &str) -> Parser {
-		Parser {
+struct Token {
+	position: usize,
+	contents: TokenContents,
+}
+
+struct Lexer<'a> {
+	data: std::iter::Peekable<std::str::Chars<'a>>,
+	position: usize,
+}
+
+fn is_whitespace(ch: char) -> bool {
+	match ch {
+		' ' | '\t' | '\r' | '\n' => true,
+		_ => false,
+	}
+}
+
+fn is_name(ch: char) -> bool {
+	ch >= 'A' && ch <= 'Z'
+}
+
+fn is_variable(ch: char) -> bool {
+	ch >= 'a' && ch <= 'z'
+}
+
+fn is_digit(ch: char) -> bool {
+	ch >= '0' && ch <= '9'
+}
+
+impl<'a> Lexer<'a> {
+	fn new(source: &str) -> Lexer {
+		Lexer {
 			data: source.chars().peekable(),
 			position: 0,
-			bind_depths: HashMap::new(),
-			current_depth: 0,
 		}
-	} 
+	}
 	
-	fn peek(&mut self) -> Option<char> {
+	fn peek_char(&mut self) -> Option<char> {
 		// convert &char to char
 		match self.data.peek() {
 			Some(c) => Some(*c),
@@ -37,68 +63,165 @@ impl<'a> Parser<'a> {
 		}
 	}
 	
-	fn advance(&mut self) -> bool {
-		self.position += 1;
+	fn advance(&mut self) {
 		self.data.next();
-		let mut skipped_whitespace = false;
-		// skip whitespace
+		self.position += 1;
+	}
+	
+	fn skip_whitespace(&mut self) {
 		loop {
-			match self.peek() {
-				Some(' ') | Some('\t') | Some('\n') | Some('\r') => { 
-					self.position += 1; 
-					self.data.next();
-					skipped_whitespace = true;
-				},
-				_ => return skipped_whitespace,
+			match self.peek_char() {
+				Some(ch) if is_whitespace(ch) => self.advance(),
+				_ => break,
 			}
 		}
 	}
 	
-	fn check(&mut self, expected: char) -> bool {
-		match self.peek() {
-			Some(c) if c == expected => { self.advance(); true },
-			_ => false,
+	fn punctuation_token(&mut self, contents: TokenContents) -> Token {
+		let start = self.position;
+		self.advance();
+		Token {
+			position: start,
+			contents: contents,
 		}
 	}
 	
-	fn consume(&mut self, expected: char) -> Option<ParseError> {
-		match self.check(expected) {
-			true => None,
-			false => Some(ParseError { 
-				position: self.position, 
-				message: format!("expected '{}'", expected) 
-			}),
+	fn name_token(&mut self, start: usize) -> Result<Token, ParseError> {
+		let mut name = String::new();
+		loop {
+			match self.peek_char() {
+				Some(ch) if is_name(ch) || is_digit(ch) => {
+					name.push(ch);
+					self.advance();
+				},
+				Some(ch) if is_variable(ch) => return Err(ParseError {
+					position: start,
+					message: "names must consist of capital \
+					          letters and numbers".to_string(),
+				}),
+				_ => return Ok(Token {
+					position: start,
+					contents: TokenContents::Name(name),
+				}),
+			}
 		}
 	}
 	
-	fn consume_alphanumeric(&mut self) -> Result<Alphanumeric, ParseError> {
-		match self.peek() {
-			Some(c) if c >= 'a' && c <= 'z' => {
-				self.advance();
-				Ok(Alphanumeric::Letter(c))
-			},
-			Some(n) if n >= '0' && n <= '9' => {
-				let mut current: u32 = (n as u32) - ('0' as u32);
-				while !self.advance() {
-					match self.peek() {
-						Some(n) if n >= '0' && n <= '9' => {
-							let digit: u32 = (n as u32) - ('0' as u32);
-							current = current * 10 + digit;
-						},
-						Some(c) if c >= 'a' && c <= 'z' => 
-							return Err(ParseError { 
-								position: self.position, 
-								message: "invalid number".to_string(), 
-							}),
-						_ => break,
+	fn number_token(&mut self, start: usize) -> Result<Token, ParseError> {
+		let mut accumulator: u64 = 0;
+		loop {
+			match self.peek_char() {
+				Some(ch) if is_digit(ch) => {
+					accumulator = accumulator * 10 + 
+						(ch as u64) - ('0' as u64);
+					if accumulator > (std::u32::MAX as u64) {
+						return Err(ParseError {
+							position: start,
+							message: "integer literal is too large".to_string(),
+						});
 					}
+					self.advance();
 				}
-				Ok(Alphanumeric::Number(current))
-			},
-			_ => Err(ParseError { 
-				position: self.position, 
-				message: "expected letter or number".to_string(), 
+				Some(ch) if is_variable(ch) || is_name(ch) => 
+					return Err(ParseError {
+						position: self.position,
+						message: "invalid number".to_string(),
+					}),
+				_ => return Ok(Token {
+					position: start,
+					contents: TokenContents::Number(accumulator as u32),
+				}),
+			}
+		} 
+	}
+	
+	fn variable_token(&mut self, start: usize) -> Result<Token, ParseError> {
+		// this is called when initial symbol is already
+		// found, so unwrapping should be safe
+		let var = self.peek_char().unwrap();
+		// skip that initial symbol
+		self.advance();
+		match self.peek_char() {
+			Some(ch) if is_digit(ch) => Err(ParseError {
+				position: self.position,
+				message: "variable can't be immediately \
+				          followed by a number".to_string(),
 			}),
+			Some(ch) if is_name(ch) => Err(ParseError {
+				position: self.position,
+				message: "variable can't be immediately \
+				          followed by a name".to_string(),
+			}),
+			_ => Ok(Token {
+				position: start,
+				contents: TokenContents::Letter(var),
+			})
+		}
+	}
+	
+	fn next_token(&mut self) -> Result<Token, ParseError> {
+		self.skip_whitespace();
+		let token_start = self.position;
+		match self.peek_char() {
+			None => Ok(Token { 
+				position: token_start,
+				contents: TokenContents::End, 
+			}),
+			Some(ch) => match ch {
+				n if is_digit(n) => self.number_token(token_start),
+				l if is_variable(l) => self.variable_token(token_start),
+				n if is_name(n) => self.name_token(token_start),
+				'.' => Ok(self.punctuation_token(TokenContents::Dot)),
+				'\\' => Ok(self.punctuation_token(TokenContents::Lambda)),
+				'(' => Ok(self.punctuation_token(TokenContents::OpenParenth)),
+				')' => Ok(self.punctuation_token(TokenContents::CloseParenth)),
+				_ => Err(ParseError {
+					position: token_start,
+					message: "invalid token".to_string(),
+				}),
+			},
+		}
+	}
+}
+
+struct Parser<'a> {
+	lexer: Lexer<'a>,
+	next_token: Token,
+	has_token: bool,
+	bind_depths: HashMap<char, u32>,
+	current_depth: u32,
+}
+
+impl<'a> Parser<'a> {
+	fn new(source: &str) -> Parser {
+		Parser {
+			lexer: Lexer::new(source),
+			next_token: Token { position: 0, contents: TokenContents::End },
+			has_token: false,
+			bind_depths: HashMap::new(),
+			current_depth: 0,
+		}
+	} 
+	
+	fn peek(&mut self) -> Result<&Token, ParseError> {
+		if !self.has_token {
+			self.next_token = try!(self.lexer.next_token());
+			self.has_token = true;
+		}
+		
+		Ok(&(self.next_token))
+	}
+	
+	fn consume(&mut self) {
+		assert!(self.has_token, "skipped a token");
+		self.has_token = false;
+	}
+	
+	fn error(&self, message: String) -> ParseError {
+		assert!(self.has_token, "raised error without token");
+		ParseError {
+			position: self.next_token.position,
+			message: message,
 		}
 	}
 }
@@ -122,118 +245,104 @@ fn map_optional_insert(map: &mut HashMap<char, u32>, key: char, value: Option<u3
 }
 
 fn parse_unit(parser: &mut Parser) -> Result<AstNode, ParseError> {
-	if parser.check('(') {
-		match parse_node(parser) {
-			Ok(node) => match parser.consume(')') {
-				None => Ok(node),
-				Some(e) => Err(e),
-			},
-			Err(e) => Err(e),
-		}
-	} else {
-		match parser.consume_alphanumeric() {
-			Ok(Alphanumeric::Letter(ch)) => {
-				match parser.bind_depths.get(&ch) {
-					Some(depth) => Ok(AstNode::BoundVariable(
-						parser.current_depth - depth)),
-					None => Ok(AstNode::FreeVariable(ch)),
-				}
-			},
-			Ok(Alphanumeric::Number(num)) => 
-				Ok(create_church_numeral(num)),
-			Err(e) => Err(e),
-		}
+	match try!(parser.peek()).contents {
+		TokenContents::OpenParenth => {
+			parser.consume();
+			let node = try!(parse_node(parser));
+			match try!(parser.peek()).contents {
+				TokenContents::CloseParenth => {
+					parser.consume();
+					Ok(node)
+				},
+				_ => Err(parser.error("expected )".to_string())),
+			}
+		},
+		TokenContents::Number(num) => {
+			parser.consume();
+			Ok(create_church_numeral(num))
+		},
+		TokenContents::Letter(ch) => {
+			parser.consume();
+			match parser.bind_depths.get(&ch) {
+				Some(depth) => Ok(AstNode::BoundVariable(
+					parser.current_depth - depth)),
+				None => Ok(AstNode::FreeVariable(ch)),
+			}
+		},
+		/* TODO: create name node and parse it here
+		TokenContents::Name(name) => {
+			AstNode::NamedFunction(name)
+		},*/
+		_ => {
+			Err(parser.error("expected name, letter, number, or (".to_string()))
+		},
 	}
 }
 
 fn parse_function(parser: &mut Parser) -> Result<AstNode, ParseError> {
-	match parser.consume_alphanumeric() {
-		Ok(Alphanumeric::Letter(ch)) => {
-			if let Some(e) = parser.consume('.') {
-				return Err(e);
-			}
-			
+	match try!(parser.peek()).contents {
+		TokenContents::Letter(ch) => {
+			parser.consume();
 			parser.current_depth += 1;
 			let old = parser.bind_depths.insert(ch, parser.current_depth);
 			
-			if parser.check('\\') {
-				match parse_function(parser) {
-					Ok(node) => {
-						parser.current_depth -= 1;
-						map_optional_insert(&mut parser.bind_depths, ch, old);
-						Ok(AstNode::Function(Box::new(node)))
-					},
-					Err(e) => Err(e), 
-				}
-			} else {
-				match parse_node(parser) {
-					Ok(node) => {
-						parser.current_depth -= 1;
-						map_optional_insert(&mut parser.bind_depths, ch, old);
-						Ok(AstNode::Function(Box::new(node)))
-					},
-					Err(e) => Err(e), 
-				}
+			let body;
+			match try!(parser.peek()).contents {
+				TokenContents::Dot => {
+					parser.consume();
+					body = try!(parse_node(parser));
+				},
+				TokenContents::Letter(..) => {
+					body = try!(parse_function(parser));
+				},
+				_ => {
+					return Err(parser.error("expected letter or .".to_string()));
+				},
 			}
+			
+			parser.current_depth -= 1;
+			map_optional_insert(&mut parser.bind_depths, ch, old);
+			Ok(AstNode::Function(Box::new(body)))
 		},
-		Ok(Alphanumeric::Number(_)) => Err(ParseError {
-			position: parser.position,
-			message: "expected letter".to_string(),	
-		}),
-		Err(e) => Err(e),
+		_ => Err(parser.error("expected letter".to_string())),
 	}
 }
 
 fn parse_node(parser: &mut Parser) -> Result<AstNode, ParseError> {
-	if parser.check('\\') {
-		return parse_function(parser);
+	match try!(parser.peek()).contents {
+		TokenContents::Lambda => {
+			parser.consume();
+			return parse_function(parser);
+		}
+		_ => (),
 	}
 	
-	match parse_unit(parser) {
-		Ok(unit) => {
-			let mut result = unit;
-			loop {
-				match parser.peek() {
-					Some(c) if 
-						c == '(' || 
-						(c >= 'a' && c <= 'z') || 
-						(c >= '0' && c <= '9') => {
-						match parse_unit(parser) {
-							Ok(unit) => result = AstNode::Application(
-								Box::new(result), 
-								Box::new(unit)),
-							Err(e) => return Err(e),
-						}
-					},
-					_ => break, 
-				}
-			}
-			
-			Ok(result)
-		},
-		Err(e) => Err(e),
+	let mut result = try!(parse_unit(parser));
+	
+	loop {
+		match try!(parser.peek()).contents {
+			TokenContents::OpenParenth |
+			TokenContents::Letter(..) |
+			TokenContents::Number(..) |
+			TokenContents::Name(..) => {
+				let next_unit = try!(parse_unit(parser));
+				result = AstNode::Application(
+					Box::new(result),
+					Box::new(next_unit));
+			},
+			_ => break, 
+		}
 	}
+			
+	Ok(result)
 }
 
 pub fn parse_object(source: &str) -> Result<AstNode, ParseError> {
-	let mut parser = Parser::new(source);
+	let mut parser = Parser::new(source);	
+	let node = try!(parse_node(&mut parser));
 	
-	// skip initial whitespace
-	match parser.peek() {
-		Some(' ') | Some('\t') | Some('\n') | Some('\r') => { 
-			parser.advance();
-		},
-		_ => { },
-	}
-	
-	match parse_node(&mut parser) {
-		Ok(node) => match parser.peek() {
-			None => Ok(node),
-			Some(_) => Err(ParseError {
-				position: parser.position,
-				message: "expected end of input".to_string(),
-			}),
-		},
-		Err(e) => Err(e),
+	match try!(parser.peek()).contents {
+		TokenContents::End => Ok(node),
+		_ => Err(parser.error("expected end of input".to_string())),
 	}
 }
