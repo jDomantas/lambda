@@ -73,6 +73,33 @@ fn print_node(node: &AstNode) {
 	}
 }
 
+fn numeric_value(node: &AstNode) -> Option<u32> {
+	let mut result = 0u32;
+	let mut current_node = node;
+	
+	for _ in 0..2 {
+		match current_node {
+			&AstNode::Function(ref body) => current_node = &**body,
+			_ => return None,
+		}
+	}
+	
+	loop {
+		match current_node {
+			&AstNode::BoundVariable(0) => return Some(result),
+			&AstNode::Application(ref f, ref x) => {
+				match &**f {
+					&AstNode::BoundVariable(1) => (),
+					_ => return None,
+				}
+				current_node = x;
+				result += 1;
+			},
+			_ => return None,
+		}
+	}
+}
+
 fn report_error(input: &str, err: ParseError) {
 	println!("{}", input);
 	for _ in 0..err.position {
@@ -97,6 +124,10 @@ fn main() {
 			println!("beta-reduced to:");
 			pretty_print(&reduced);
 			println!("");
+			match numeric_value(&reduced) {
+				Some(num) => println!("Church numeral for: {}", num),
+				None => println!("Not a Church numeral"),
+			}
 		}
 		Err(e) => report_error(&input, e),
 	}
