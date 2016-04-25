@@ -93,10 +93,8 @@ fn main() {
 	
 	match parser::parse_object(&input) {
 		Ok(node) => {
-			println!("Success!");
-			pretty_print(&node);
-			println!("");
 			let reduced = reduction::beta_reduce(&node);
+			println!("beta-reduced to:");
 			pretty_print(&reduced);
 			println!("");
 		}
