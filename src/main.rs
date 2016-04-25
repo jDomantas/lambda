@@ -56,8 +56,8 @@ fn pretty_print(node: &AstNode) {
 
 fn print_node(node: &AstNode) {
 	match node {
-		&AstNode::FreeVariable(ch) => print!("({})", ch),
-		&AstNode::BoundVariable(v) => print!("({})", v),
+		&AstNode::FreeVariable(ch) => print!("{}", ch),
+		&AstNode::BoundVariable(v) => print!("{}", v),
 		&AstNode::Function(ref body) => {
 			print!("(\\");
 			print_node(&**body);
@@ -66,6 +66,7 @@ fn print_node(node: &AstNode) {
 		&AstNode::Application(ref a, ref b) => {
 			print!("(");
 			print_node(&**a);
+			print!(" ");
 			print_node(&**b);
 			print!(")");
 		}
