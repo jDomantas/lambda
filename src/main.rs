@@ -1,4 +1,5 @@
 mod parser;
+mod reduction;
 
 use std::io;
 use parser::ParseError;
@@ -29,23 +30,30 @@ fn print_node(node: &AstNode) {
 }
 
 fn report_error(input: &str, err: ParseError) {
-	print!("{}", input);
+	println!("{}", input);
 	for _ in 0..err.position {
 		print!(" ");
 	}
 	println!("^");
-	println!("Error (column {}): {}", err.position, err.message);
+	// + 1 because editors index columns starting from 1
+	println!("Error (column {}): {}", err.position + 1, err.message);
 }
 
 fn main() {
 	let mut input = String::new();
 	
 	io::stdin().read_line(&mut input).expect("Failed to read line");
+	// when reading from stdin strings always
+	// have a trailing newline for some reason
+	assert_eq!(input.pop().unwrap_or('\0'), '\n');
 	
 	match parser::parse_object(&input) {
 		Ok(node) => {
 			println!("Success!");
 			print_node(&node);
+			println!("");
+			let reduced = reduction::beta_reduce(&node);
+			print_node(&reduced);
 			println!("");
 		}
 		Err(e) => report_error(&input, e),
