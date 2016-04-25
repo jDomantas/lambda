@@ -15,7 +15,16 @@ fn pretty_print_walk(node: &AstNode, current_depth: u32, in_application: bool) {
 	match node {
 		&AstNode::Application(ref a, ref b) => {
 			pretty_print_walk(&**a, current_depth, true);
-			pretty_print_walk(&**b, current_depth, true);
+			match **b {
+				AstNode::Application(..) => {
+					print!("(");
+					pretty_print_walk(&**b, current_depth, true);
+					print!(")");
+				},
+				_ => {
+					pretty_print_walk(&**b, current_depth, true);
+				},
+			}
 		},
 		&AstNode::BoundVariable(num) => {
 			let ch = std::char::from_u32(
