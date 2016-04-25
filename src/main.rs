@@ -4,16 +4,18 @@ use std::io;
 use parser::ParseError;
 
 pub enum AstNode {
-	Variable(u32),
+	FreeVariable(char),
+	BoundVariable(u32),
 	Application(Box<AstNode>, Box<AstNode>),
-	Function(u32, Box<AstNode>),
+	Function(Box<AstNode>),
 }
 
 fn print_node(node: &AstNode) {
 	match node {
-		&AstNode::Variable(v) => print!("({})", v),
-		&AstNode::Function(p, ref body) => {
-			print!("(\\{}.", p);
+		&AstNode::FreeVariable(ch) => print!("({})", ch),
+		&AstNode::BoundVariable(v) => print!("({})", v),
+		&AstNode::Function(ref body) => {
+			print!("(\\");
 			print_node(&**body);
 			print!(")");
 		},

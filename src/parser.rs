@@ -10,25 +10,17 @@ pub struct ParseError {
 struct Parser<'a> {
 	data: std::iter::Peekable<std::str::Chars<'a>>,
 	position: usize,
-	replacements: HashMap<char, u32>,
-	next_value: u32,
+	bind_depths: HashMap<char, u32>,
+	current_depth: u32,
 }
 
 impl<'a> Parser<'a> {
 	fn new(source: &str) -> Parser {
-		let mut map = HashMap::new();
-		// can't find a way to iterate over characters
-		// so iterate over char codes and convert back
-		for i in ('a' as u32)..('z' as u32 + 1) {
-			let ch = std::char::from_u32(i).unwrap();
-			map.insert(ch, i - ('a' as u32));
-		}
-		
 		Parser {
 			data: source.chars().peekable(),
 			position: 0,
-			replacements: map,
-			next_value: ('z' as u32) - ('a' as u32) + 1,
+			bind_depths: HashMap::new(),
+			current_depth: 0,
 		}
 	} 
 	
@@ -86,6 +78,13 @@ impl<'a> Parser<'a> {
 	}
 }
 
+fn map_optional_insert(map: &mut HashMap<char, u32>, key: char, value: Option<u32>) {
+	match value {
+		Some(val) => map.insert(key, val),
+		None => map.remove(&key),
+	};
+}
+
 fn parse_unit(parser: &mut Parser) -> Result<AstNode, ParseError> {
 	if parser.check('(') {
 		match parse_node(parser) {
@@ -97,10 +96,13 @@ fn parse_unit(parser: &mut Parser) -> Result<AstNode, ParseError> {
 		}
 	} else {
 		match parser.consume_letter() {
-			Ok(ch) => Ok(AstNode::Variable(
-				// we are always keeping keys 'a' - 'z' in the map
-				// so unwrapping must always be safe
-				*parser.replacements.get(&ch).unwrap())),
+			Ok(ch) => {
+				match parser.bind_depths.get(&ch) {
+					Some(depth) => Ok(AstNode::BoundVariable(
+						parser.current_depth - depth)),
+					None => Ok(AstNode::FreeVariable(ch)),
+				}
+			},
 			Err(e) => Err(e),
 		}
 	}
@@ -113,25 +115,24 @@ fn parse_function(parser: &mut Parser) -> Result<AstNode, ParseError> {
 				return Err(e);
 			}
 			
-			// just like in parse_unit, unwrapping must be safe
-			let old_value = *parser.replacements.get(&ch).unwrap();
-			let replace_with = parser.next_value;
-			parser.next_value += 1;
-			parser.replacements.insert(ch, replace_with);
+			parser.current_depth += 1;
+			let old = parser.bind_depths.insert(ch, parser.current_depth);
 			
 			if parser.check('\\') {
 				match parse_function(parser) {
 					Ok(node) => {
-						parser.replacements.insert(ch, old_value);
-						Ok(AstNode::Function(replace_with, Box::new(node)))
+						parser.current_depth -= 1;
+						map_optional_insert(&mut parser.bind_depths, ch, old);
+						Ok(AstNode::Function(Box::new(node)))
 					},
 					Err(e) => Err(e), 
 				}
 			} else {
 				match parse_node(parser) {
 					Ok(node) => {
-						parser.replacements.insert(ch, old_value);
-						Ok(AstNode::Function(replace_with, Box::new(node)))
+						parser.current_depth -= 1;
+						map_optional_insert(&mut parser.bind_depths, ch, old);
+						Ok(AstNode::Function(Box::new(node)))
 					},
 					Err(e) => Err(e), 
 				}
