@@ -218,16 +218,19 @@ impl<'a> Parser<'a> {
 		}
 		
 		// move out old token, replace with some random unused value
+		let old_position = self.next_token.position;
 		let token = std::mem::replace(
-			&mut self.next_token,  
-			Token { position: 0, contents: TokenContents::End });
+			&mut self.next_token,
+			Token {
+				position: old_position,
+				contents: TokenContents::End 
+			});
 		
 		self.has_token = false;
 		return Ok(token);
 	}
 	
 	fn error(&self, message: String) -> ParseError {
-		assert!(self.has_token, "raised error without token");
 		ParseError {
 			position: self.next_token.position,
 			message: message,
@@ -261,7 +264,7 @@ fn parse_unit(parser: &mut Parser) -> Result<AstNode, ParseError> {
 			let close_parenth = try!(parser.consume());
 			match close_parenth.contents {
 				TokenContents::CloseParenth => Ok(node),
-				_ => Err(parser.error("expected )".to_string())),
+				_ => Err(parser.error("expected name, letter, number, (, or )".to_string())),
 			}
 		},
 		TokenContents::Number(num) => {
