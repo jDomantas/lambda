@@ -18,6 +18,7 @@ fn pretty_print_walk(node: &AstNode, current_depth: u32, in_application: bool) {
 	match node {
 		&AstNode::Application(ref a, ref b) => {
 			pretty_print_walk(&**a, current_depth, true);
+			print!(" ");
 			match **b {
 				AstNode::Application(..) => {
 					print!("(");
