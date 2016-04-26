@@ -102,6 +102,22 @@ fn numeric_value(node: &AstNode) -> Option<u32> {
 	}
 }
 
+fn boolean_value(node: &AstNode) -> Option<bool> {
+	let mut current_node = node;
+	for _ in 0..2 {
+		match current_node {
+			&AstNode::Function(ref body) => current_node = &**body,
+			_ => return None,
+		}
+	}
+	match current_node {
+		&AstNode::BoundVariable(1) => Some(true),
+		&AstNode::BoundVariable(0) => Some(false),
+		_ => None,
+	}
+	
+}
+
 impl Interpreter {
 	pub fn new() -> Interpreter {
 		Interpreter {
@@ -145,9 +161,14 @@ impl Interpreter {
 				println!("beta-reduced to:");
 				pretty_print(&reduced);
 				println!("");
+				print!("Church value: ");
 				match numeric_value(&reduced) {
-					Some(num) => println!("Church numeral for: {}", num),
-					None => println!("Not a Church numeral"),
+					Some(0) => println!("0 / False"),
+					Some(num) => println!("{}", num),
+					None => match boolean_value(&reduced) {
+						Some(true) => println!("True"),
+						_ => println!("None"),
+					}
 				}
 				true
 			}
