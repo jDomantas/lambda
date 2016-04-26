@@ -12,6 +12,8 @@ fn copy_node(node: &AstNode) -> AstNode {
 			AstNode::BoundVariable(num),
 		&AstNode::Function(ref body) =>
 			AstNode::Function(Box::new(copy_node(&**body))),
+		&AstNode::Name(..) =>
+			panic!("name node in expression"),
 	}
 }
 
@@ -32,6 +34,8 @@ fn increment_free(node: &AstNode, by: u32, free_threshold: u32) -> AstNode {
 		&AstNode::Function(ref body) =>
 			AstNode::Function(
 				Box::new(increment_free(&**body, by, free_threshold + 1))),
+		&AstNode::Name(..) =>
+			panic!("name node in expression"),
 	}
 }
 
@@ -59,6 +63,8 @@ fn substitute_walk(node: &AstNode, depth: u32, arg: &AstNode) -> AstNode {
 			AstNode::Application(
 				Box::new(substitute_walk(&**a, depth, arg)),
 				Box::new(substitute_walk(&**b, depth, arg))),
+		&AstNode::Name(..) =>
+			panic!("name node in expression"),
 	}
 }
 
@@ -71,6 +77,8 @@ fn reduce_application(left: &AstNode, right: &AstNode, to_fn: bool) -> AstNode {
 	match left_fn {
 		AstNode::Function(body) =>
 			reduce_node(&substitute(&body, right), to_fn),
+		AstNode::Name(..) =>
+			panic!("name node in expression"),
 		_ => 
 			AstNode::Application(
 				Box::new(reduce_node(&left_fn, false)),
@@ -90,7 +98,9 @@ fn reduce_node(node: &AstNode, to_fn: bool) -> AstNode {
 			}
 		}
 		&AstNode::Application(ref a, ref b) =>
-			reduce_application(&**a, &**b, to_fn), 
+			reduce_application(&**a, &**b, to_fn),
+		&AstNode::Name(..) =>
+			panic!("name node in expression"), 
 		_ => 
 			// variables can't be reduced, just copy them
 			copy_node(node),

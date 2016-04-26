@@ -212,9 +212,18 @@ impl<'a> Parser<'a> {
 		Ok(&(self.next_token))
 	}
 	
-	fn consume(&mut self) {
-		assert!(self.has_token, "skipped a token");
+	fn consume(&mut self) -> Result<Token, ParseError> {
+		if !self.has_token {
+			try!(self.peek());
+		}
+		
+		// move out old token, replace with some random unused value
+		let token = std::mem::replace(
+			&mut self.next_token,  
+			Token { position: 0, contents: TokenContents::End });
+		
 		self.has_token = false;
+		return Ok(token);
 	}
 	
 	fn error(&self, message: String) -> ParseError {
@@ -245,34 +254,29 @@ fn map_optional_insert(map: &mut HashMap<char, u32>, key: char, value: Option<u3
 }
 
 fn parse_unit(parser: &mut Parser) -> Result<AstNode, ParseError> {
-	match try!(parser.peek()).contents {
+	let token = try!(parser.consume());
+	match token.contents {
 		TokenContents::OpenParenth => {
-			parser.consume();
 			let node = try!(parse_node(parser));
-			match try!(parser.peek()).contents {
-				TokenContents::CloseParenth => {
-					parser.consume();
-					Ok(node)
-				},
+			let close_parenth = try!(parser.consume());
+			match close_parenth.contents {
+				TokenContents::CloseParenth => Ok(node),
 				_ => Err(parser.error("expected )".to_string())),
 			}
 		},
 		TokenContents::Number(num) => {
-			parser.consume();
 			Ok(create_church_numeral(num))
 		},
 		TokenContents::Letter(ch) => {
-			parser.consume();
 			match parser.bind_depths.get(&ch) {
 				Some(depth) => Ok(AstNode::BoundVariable(
 					parser.current_depth - depth)),
 				None => Ok(AstNode::FreeVariable(ch)),
 			}
 		},
-		/* TODO: create name node and parse it here
-		TokenContents::Name(name) => {
-			AstNode::NamedFunction(name)
-		},*/
+		TokenContents::Name(s) => {
+			Ok(AstNode::Name(s))
+		},
 		_ => {
 			Err(parser.error("expected name, letter, number, or (".to_string()))
 		},
@@ -280,16 +284,18 @@ fn parse_unit(parser: &mut Parser) -> Result<AstNode, ParseError> {
 }
 
 fn parse_function(parser: &mut Parser) -> Result<AstNode, ParseError> {
-	match try!(parser.peek()).contents {
+	let token = try!(parser.consume());
+	match token.contents {
 		TokenContents::Letter(ch) => {
-			parser.consume();
 			parser.current_depth += 1;
 			let old = parser.bind_depths.insert(ch, parser.current_depth);
 			
 			let body;
 			match try!(parser.peek()).contents {
 				TokenContents::Dot => {
-					parser.consume();
+					// we have just checked that this is 
+					// a dot token, so it can't be error
+					assert!(parser.consume().is_ok());
 					body = try!(parse_node(parser));
 				},
 				TokenContents::Letter(..) => {
@@ -311,7 +317,9 @@ fn parse_function(parser: &mut Parser) -> Result<AstNode, ParseError> {
 fn parse_node(parser: &mut Parser) -> Result<AstNode, ParseError> {
 	match try!(parser.peek()).contents {
 		TokenContents::Lambda => {
-			parser.consume();
+			// we have just checked that this is 
+			// a dot token, so it can't be error
+			assert!(parser.consume().is_ok());
 			return parse_function(parser);
 		}
 		_ => (),

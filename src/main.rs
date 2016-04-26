@@ -9,6 +9,7 @@ pub enum AstNode {
 	BoundVariable(u32),
 	Application(Box<AstNode>, Box<AstNode>),
 	Function(Box<AstNode>),
+	Name(String),
 }
 
 fn pretty_print_walk(node: &AstNode, current_depth: u32, in_application: bool) {
@@ -47,6 +48,9 @@ fn pretty_print_walk(node: &AstNode, current_depth: u32, in_application: bool) {
 				print!(")");
 			}
 		},
+		&AstNode::Name(ref name) => {
+			print!("{}", name);	
+		},
 	}
 }
 
@@ -54,6 +58,10 @@ fn pretty_print(node: &AstNode) {
 	pretty_print_walk(node, 0, false);
 }
 
+/// Prints node contents. As the parser mangles bound 
+/// variable names, this prints the internal format, 
+/// so it usually used for debugging.
+#[allow(dead_code)]
 fn print_node(node: &AstNode) {
 	match node {
 		&AstNode::FreeVariable(ch) => print!("{}", ch),
@@ -69,7 +77,10 @@ fn print_node(node: &AstNode) {
 			print!(" ");
 			print_node(&**b);
 			print!(")");
-		}
+		},
+		&AstNode::Name(ref name) => {
+			print!("{}", name);	
+		},
 	}
 }
 
