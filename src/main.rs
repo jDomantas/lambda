@@ -91,6 +91,34 @@ fn main() {
 	let mut input = String::new();
 	let mut interpreter = Interpreter::new();
 	
+	interpreter.eval_line("I := \\x.x");
+	interpreter.eval_line("SUCC := \\nfx.f(nfx)");
+	interpreter.eval_line("ADD := \\mnfx.mf(nfx)");
+	interpreter.eval_line("MUL := \\mnf.m(nf)");
+	interpreter.eval_line("POW := \\be.eb");
+	interpreter.eval_line("PRED := \\nfx.n(\\gh.h(gf))(\\u.x)(\\u.u)");
+	interpreter.eval_line("SUB := \\mn.n PRED m");
+	interpreter.eval_line("TRUE := \\xy.x");
+	interpreter.eval_line("FALSE := \\xy.y");
+	interpreter.eval_line("AND := \\pq.pqp");
+	interpreter.eval_line("OR := \\pq.ppq");
+	interpreter.eval_line("NOT := \\pab.pba");
+	interpreter.eval_line("IF := \\pab.pab");
+	interpreter.eval_line("ZERO := \\n.n(\\x.FALSE)TRUE");
+	interpreter.eval_line("LEQ := \\mn.ZERO (SUB m n)");
+	interpreter.eval_line("EQ := \\mn.AND (LEQ m n) (LEQ n m)");
+	interpreter.eval_line("PAIR := \\xyf.fxy");
+	interpreter.eval_line("FIRST := \\p.p TRUE");
+	interpreter.eval_line("SECOND := \\p.p FALSE");
+	interpreter.eval_line("NIL := \\x.TRUE");
+	interpreter.eval_line("NULL := \\p.p(\\xy.FALSE)");
+	
+	interpreter.eval_line("HEAD := \\p.FIRST p");
+	interpreter.eval_line("TAIL := \\p.SECOND p");
+	interpreter.eval_line("CONS := PAIR");
+	interpreter.eval_line("REC := \\f.ff");
+	interpreter.eval_line("REDUCE := REC (\\rfp.IF (NULL (TAIL p)) (HEAD p) (r r f (PAIR (f (HEAD p) (HEAD (TAIL p))) (TAIL (TAIL p)))))");
+	
 	loop {
 		print!("> ");
 		io::stdout().flush().expect("Failed to flush stdout");

@@ -96,7 +96,7 @@ fn reduce_node(node: &AstNode, to_fn: bool) -> AstNode {
 				// reduce recursively
 				AstNode::Function(Box::new(reduce_node(&**body, false)))
 			}
-		}
+		},
 		&AstNode::Application(ref a, ref b) =>
 			reduce_application(&**a, &**b, to_fn),
 		&AstNode::Name(..) =>
